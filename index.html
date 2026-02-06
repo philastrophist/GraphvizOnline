@@ -427,6 +427,14 @@
     integrity="sha512-qtX0GLM3qX8rxJN1gyDfcnMFFrKvixfoEOwbBib9VafR5vbChV5LeE5wSI/x+IlCkTY5ZFddFDCCfaVJJNnuKQ=="
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="viz-global.js"></script>
+  <script>
+    window.MathJax = {
+    tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+    svg: { fontCache: 'global' }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <script src="mathjax-support.js"></script>
   <script src="svg-pan-zoom.min.js" type="text/javascript" charset="utf-8"></script>
   <script>
     const editorElement = document.getElementById('editor');
@@ -761,28 +769,45 @@
           var a = document.createElement("a");
           a.appendChild(result);
           reviewer.appendChild(a);
-          svgPanZoom(result, {
-            zoomEnabled: true,
-            controlIconsEnabled: true,
-            fit: true,
-            center: true,
-          });
+          Promise.resolve(window.typesetMathInGraphSvg?.(result))
+              .catch(console.error)
+              .finally(() => {
+                svgPanZoom(result, {
+                  zoomEnabled: true,
+                  controlIconsEnabled: true,
+                  fit: true,
+                  center: true,
+                });
+              });
         } else if (formatEl.value == "png") {
-          var serializer = new XMLSerializer();
-          var source = serializer.serializeToString(result);
-          let resultWithPNGHeader = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(source)));
-          svgXmlToImage(resultWithPNGHeader, function (err, image) {
-            if (err) {
-              show_error(err)
-              return
-            }
-            image.setAttribute("title", "graphviz");
-            downloadBtn.href = image.src;
-            downloadBtn.download = "graphviz.png";
-            var a = document.createElement("a");
-            a.appendChild(image);
-            reviewer.appendChild(a);
-          })
+          (async () => {
+            // attach offscreen for getBBox()
+            const tmp = document.createElement("div");
+            tmp.style.position = "absolute";
+            tmp.style.left = "-99999px";
+            tmp.style.top = "-99999px";
+            tmp.style.visibility = "hidden";
+            tmp.appendChild(result);
+            document.body.appendChild(tmp);
+
+            await window.typesetMathInGraphSvg?.(result);
+
+            const serializer = new XMLSerializer();
+            const source = serializer.serializeToString(result);
+
+            tmp.remove();
+
+            let resultWithPNGHeader = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(source)));
+            svgXmlToImage(resultWithPNGHeader, function (err, image) {
+              if (err) { show_error(err); return; }
+              image.setAttribute("title", "graphviz");
+              downloadBtn.href = image.src;
+              downloadBtn.download = "graphviz.png";
+              var a = document.createElement("a");
+              a.appendChild(image);
+              reviewer.appendChild(a);
+            });
+          })().catch(show_error);
         } else {
           var text = document.createElement("div");
           text.id = "text";
